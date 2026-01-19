@@ -112,46 +112,180 @@ document.querySelectorAll('.skill-progress').forEach(bar => {
     skillObserver.observe(bar);
 });
 
+// Achievement image slider per card
+const achievementCards = document.querySelectorAll('.achievement-card');
+const cardSliders = new Map(); // store slider state per card for modal syncing
+
+achievementCards.forEach(card => {
+    const images = Array.from(card.querySelectorAll('.achievement-image'));
+    if (!images.length) return;
+
+    let currentIndex = 0;
+    let autoplayId = null;
+    const AUTOPLAY_INTERVAL = 4000;
+
+    const showImage = (index) => {
+        currentIndex = (index + images.length) % images.length;
+        images.forEach((img, idx) => {
+            img.classList.toggle('active', idx === currentIndex);
+        });
+    };
+
+    // initial state
+    showImage(0);
+
+    if (images.length > 1) {
+        const imageRow = card.querySelector('.achievement-images-row');
+
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'achievement-next achievement-prev';
+        prevBtn.setAttribute('aria-label', 'Previous achievement image');
+        prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+        imageRow.appendChild(prevBtn);
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'achievement-next';
+        nextBtn.setAttribute('aria-label', 'Next achievement image');
+        nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+        imageRow.appendChild(nextBtn);
+
+        const next = () => showImage(currentIndex + 1);
+        const prev = () => showImage(currentIndex - 1);
+
+        nextBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            next();
+        });
+
+        prevBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            prev();
+        });
+
+        const startAutoplay = () => {
+            stopAutoplay();
+            autoplayId = setInterval(next, AUTOPLAY_INTERVAL);
+        };
+
+        const stopAutoplay = () => {
+            if (autoplayId) {
+                clearInterval(autoplayId);
+                autoplayId = null;
+            }
+        };
+
+        imageRow.addEventListener('mouseenter', stopAutoplay);
+        imageRow.addEventListener('mouseleave', startAutoplay);
+
+        startAutoplay();
+
+        cardSliders.set(card, {
+            images,
+            getIndex: () => currentIndex,
+            showImage,
+            next,
+            prev
+        });
+    } else {
+        cardSliders.set(card, {
+            images,
+            getIndex: () => currentIndex,
+            showImage: (idx) => showImage(idx),
+            next: () => {},
+            prev: () => {}
+        });
+    }
+});
+
 // Modal Functionality for Achievement Images
 const achievementImages = document.querySelectorAll('.achievement-image');
 const modal = document.getElementById('imageModal');
 const modalImage = document.getElementById('modalImage');
 const modalCaption = document.getElementById('modalCaption');
 const modalClose = document.getElementById('modalClose');
+const modalPrev = document.getElementById('modalPrev');
+const modalNext = document.getElementById('modalNext');
+
+let activeSlider = null;
+
+const openModalFor = (card, index) => {
+    const slider = cardSliders.get(card);
+    if (!slider) return;
+    activeSlider = slider;
+    slider.showImage(index);
+
+    const img = slider.images[slider.getIndex()];
+    const caption = card.querySelector('.achievement-footer p').textContent;
+
+    modalImage.src = img.src;
+    modalImage.alt = img.alt;
+    modalCaption.textContent = caption;
+    modal.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+};
+
+const refreshModalImage = () => {
+    if (!activeSlider) return;
+    const img = activeSlider.images[activeSlider.getIndex()];
+    modalImage.src = img.src;
+    modalImage.alt = img.alt;
+};
 
 achievementImages.forEach(img => {
     img.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent card click event
+        e.stopPropagation();
         const card = img.closest('.achievement-card');
-        const caption = card.querySelector('.achievement-footer p').textContent;
-        
-        modalImage.src = img.src;
-        modalImage.alt = img.alt;
-        modalCaption.textContent = caption;
-        modal.style.display = 'block';
-        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        const slider = cardSliders.get(card);
+        const index = slider ? slider.images.indexOf(img) : 0;
+        openModalFor(card, index);
     });
 });
 
-// Close modal
-modalClose.addEventListener('click', () => {
+// Modal navigation
+const closeModal = () => {
     modal.style.display = 'none';
     document.body.style.overflow = 'auto';
-});
+    activeSlider = null;
+};
 
-// Close modal when clicking outside the image
+modalClose.addEventListener('click', closeModal);
+
 modal.addEventListener('click', (e) => {
     if (e.target === modal) {
-        modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        closeModal();
     }
 });
 
-// Close modal with Escape key
+modalPrev.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!activeSlider) return;
+    activeSlider.prev();
+    refreshModalImage();
+});
+
+modalNext.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!activeSlider) return;
+    activeSlider.next();
+    refreshModalImage();
+});
+
+// Keyboard navigation for modal
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal.style.display === 'block') {
-        modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+    if (modal.style.display === 'block') {
+        if (e.key === 'Escape') {
+            closeModal();
+        } else if (e.key === 'ArrowRight') {
+            if (activeSlider) {
+                activeSlider.next();
+                refreshModalImage();
+            }
+        } else if (e.key === 'ArrowLeft') {
+            if (activeSlider) {
+                activeSlider.prev();
+                refreshModalImage();
+            }
+        }
     }
 });
 
