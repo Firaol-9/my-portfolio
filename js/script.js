@@ -112,9 +112,11 @@ document.querySelectorAll('.skill-progress').forEach(bar => {
     skillObserver.observe(bar);
 });
 
+// Shared slider state map for any card type (achievements, projects, etc.)
+const cardSliders = new Map(); // store slider state per card for modal syncing
+
 // Achievement image slider per card
 const achievementCards = document.querySelectorAll('.achievement-card');
-const cardSliders = new Map(); // store slider state per card for modal syncing
 
 achievementCards.forEach(card => {
     const images = Array.from(card.querySelectorAll('.achievement-image'));
@@ -197,6 +199,90 @@ achievementCards.forEach(card => {
     }
 });
 
+// Project image slider per card
+const projectCardsForSlider = document.querySelectorAll('.project-card');
+
+projectCardsForSlider.forEach(card => {
+    const images = Array.from(card.querySelectorAll('.project-image'));
+    if (!images.length) return;
+
+    let currentIndex = 0;
+    let autoplayId = null;
+    const PROJECT_AUTOPLAY_INTERVAL = 4000;
+
+    const showImage = (index) => {
+        currentIndex = (index + images.length) % images.length;
+        images.forEach((img, idx) => {
+            img.classList.toggle('active', idx === currentIndex);
+        });
+    };
+
+    // initial state
+    showImage(0);
+
+    if (images.length > 1) {
+        const imageRow = card.querySelector('.project-image-container');
+
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'achievement-next achievement-prev';
+        prevBtn.setAttribute('aria-label', 'Previous project image');
+        prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+        imageRow.appendChild(prevBtn);
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'achievement-next';
+        nextBtn.setAttribute('aria-label', 'Next project image');
+        nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+        imageRow.appendChild(nextBtn);
+
+        const next = () => showImage(currentIndex + 1);
+        const prev = () => showImage(currentIndex - 1);
+
+        nextBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            next();
+        });
+
+        prevBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            prev();
+        });
+
+        const startAutoplay = () => {
+            stopAutoplay();
+            autoplayId = setInterval(next, PROJECT_AUTOPLAY_INTERVAL);
+        };
+
+        const stopAutoplay = () => {
+            if (autoplayId) {
+                clearInterval(autoplayId);
+                autoplayId = null;
+            }
+        };
+
+        imageRow.addEventListener('mouseenter', stopAutoplay);
+        imageRow.addEventListener('mouseleave', startAutoplay);
+
+        startAutoplay();
+
+        cardSliders.set(card, {
+            images,
+            getIndex: () => currentIndex,
+            showImage,
+            next,
+            prev
+        });
+    } else {
+        cardSliders.set(card, {
+            images,
+            getIndex: () => currentIndex,
+            showImage: (idx) => showImage(idx),
+            next: () => {},
+            prev: () => {}
+        });
+    }
+});
+
 // Modal Functionality for Achievement Images
 const achievementImages = document.querySelectorAll('.achievement-image');
 const modal = document.getElementById('imageModal');
@@ -215,11 +301,10 @@ const openModalFor = (card, index) => {
     slider.showImage(index);
 
     const img = slider.images[slider.getIndex()];
-    const caption = card.querySelector('.achievement-footer p').textContent;
 
     modalImage.src = img.src;
     modalImage.alt = img.alt;
-    modalCaption.textContent = caption;
+    modalCaption.textContent = ''; // Hide achievement footer text in modal
     modal.style.display = 'block';
     document.body.style.overflow = 'hidden';
 };
@@ -294,14 +379,23 @@ const projectCards = document.querySelectorAll('.project-card');
 
 projectCards.forEach(card => {
     card.addEventListener('click', () => {
-        const img = card.querySelector('.project-image');
-        const title = card.querySelector('.project-title').textContent;
-        
-        modalImage.src = img.src;
-        modalImage.alt = img.alt;
-        modalCaption.textContent = title;
-        modal.style.display = 'block';
-        document.body.style.overflow = 'hidden';
+        const slider = cardSliders.get(card);
+        if (slider) {
+            // Open modal tied to this project's slider so arrows/keyboard work
+            openModalFor(card, slider.getIndex());
+            const title = card.querySelector('.project-title').textContent;
+            modalCaption.textContent = title;
+        } else {
+            // Fallback for single-image project cards
+            const img = card.querySelector('.project-image');
+            const title = card.querySelector('.project-title').textContent;
+            
+            modalImage.src = img.src;
+            modalImage.alt = img.alt;
+            modalCaption.textContent = title;
+            modal.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+        }
     });
 });
 
